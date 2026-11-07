@@ -4,6 +4,7 @@ import time
 from entity.entity import Entity
 from entity.player import Player
 from camera import Camera
+from world import World
 
 # CONSTANTS
 TILE = 16  # pixels
@@ -21,24 +22,31 @@ CAMERA_SPEED = 5.0
 
 class Game():
     def __init__(self, root):
+        # WINDOW
         self.root = root
         self.canvas = tk.Canvas(root, width=WINDOW, height=WINDOW, bg="#1e1e1e", highlightthickness=0)
         self.canvas.pack()
 
-        self.bounds = (WORLD_PXL, WORLD_PXL)
+        # WORLD
+        self.world = World(grid_width=WORLD_GRID, grid_height=WORLD_GRID, tile_size=TILE_PXL)
+        self.world.spawn(self.canvas)
 
+        # CAMERA
         self.camera = Camera(
             width=WINDOW, height=WINDOW,
-            world_width=WORLD_PXL, world_height=WORLD_PXL,
+            world=self.world,
             follow_speed=CAMERA_SPEED,
         )
 
-        self._build_grid()
-
+        # PLAYER
+        cx, cy = self.world.center()
         self.player = Player(
-            x=WORLD_PXL // 2 - TILE_PXL // 2,
-            y=WORLD_PXL // 2 - TILE_PXL // 2,
+            x=cx - TILE_PXL // 2,
+            y=cy - TILE_PXL // 2,
             speed=SPEED,
+            sprite_dir="src/tiles/player",
+            sprite_scale=SCALE,
+            anim_fps=8
         )
         self.player.spawn(self.canvas)
 
@@ -54,45 +62,27 @@ class Game():
         root.bind("<KeyPress>",   lambda e: self.player.handle_key_press(e.keysym))
         root.bind("<KeyRelease>", lambda e: self.player.handle_key_release(e.keysym))
 
+        # Game Loop
         self._last = time.perf_counter()
         self._loop()
 
-    def _build_grid(self):
-        self.grid_lines = []
-        for i in range(WORLD_GRID + 1):
-            wx = i * TILE_PXL
-            line = self.canvas.create_line(0, 0, 0, 0, fill="#2a2a2a")
-            self.grid_lines.append(("v", wx, line))
-        for i in range(WORLD_GRID + 1):
-            wy = i * TILE_PXL
-            line = self.canvas.create_line(0, 0, 0, 0, fill="#2a2a2a")
-            self.grid_lines.append(("h", wy, line))
-
-    def _render_grid(self):
-        for kind, wp, line in self.grid_lines:
-            if kind == "v":
-                sx, _ = self.camera.to_screen(wp, 0)
-                self.canvas.coords(line, sx, 0, sx, WINDOW)
-            else:
-                _, sy = self.camera.to_screen(0, wp)
-                self.canvas.coords(line, 0, sy, WINDOW, sy)
-
     def _loop(self):
+        # Time Logic
         now = time.perf_counter()
         dt = min(now - self._last, 0.05)
         self._last = now
 
-        # 1. Мир обновляется
+        # World Updates
         for entity in self.entities:
-            entity.update(dt, self.bounds)
+            entity.update(dt, self.world.bounds)
 
-        # 2. Камера догоняет НОВУЮ позицию игрока
+        # Camera Follows Player
         pcx = self.player.x + self.player.size / 2
         pcy = self.player.y + self.player.size / 2
         self.camera.follow(pcx, pcy, dt)
 
-        # 3. Рисуем всё через камеру
-        self._render_grid()
+        # Rendering (Worlds -> Entities)
+        self.world.render(self.canvas, self.camera)
         for entity in self.entities:
             entity.render(self.canvas, self.camera)
 
@@ -103,7 +93,7 @@ class Game():
 def main():
     root = tk.Tk()
     root.title("Swiss Gear Calculator")
-    root.geometry("768x768")
+    root.geometry(f"{WINDOW}x{WINDOW}")
     root.resizable(False, False)
     Game(root)
     root.mainloop()
